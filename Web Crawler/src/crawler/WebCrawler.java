@@ -9,28 +9,33 @@ import java.io.IOException;
 import java.util.HashSet;
 
 import java.util.*;
+import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
+//added by Ronald
+import com.cybozu.labs.langdetect.*;
 
 public class WebCrawler {
 
     private HashSet<String> links;
     private static List<String> htmls;
-    private static List<String> bodies;
+    private static String bodies;
     private int count;
-    //added by Ronald
     private String language;
 
-    static String seedUrl = "https://www.japaneseknifeimports.com/";
+
+    static String seedUrl = "https://www.cpp.edu/~bsteichen/";
 
     public WebCrawler() {
         links = new HashSet<String>(); //Hash set of all the URLs
         htmls = new ArrayList<String>(); //Arraylist of the corresponding html
-        bodies = new ArrayList<String>(); //Arraylist of the corresponding text
+        bodies = ""; //Arraylist of the corresponding text
         count = 0;
     }
 
-
     public void getPageLinks(String URL) {
-        //Check if you have already crawled the URLs
+        //Check if you have already crawled the URLs 
         if (!links.contains(URL) && count < 10) {
             try {
 
@@ -42,14 +47,13 @@ public class WebCrawler {
                     String body = Jsoup.parse(html).body().text();
 
                     htmls.add(html);
-                    bodies.add(body);
+                    bodies = bodies + " " + body;
                     count++;
                 }
 
                 //Fetch the HTML code
                 Document document = Jsoup.connect(URL).get();
 
-                //added by Ronald
                 checkLang(document);
 
                 //Parse the HTML to extract links to other URLs
@@ -65,35 +69,94 @@ public class WebCrawler {
                 //System.err.println("For '" + URL + "': " + e.getMessage());
             }
 
-
         }
 
     }
 
-    //added by Ronald
     private boolean checkLang(Document document) {
+        String textLang = detect(document.body().text());
         Element language = document.select("html").first();
         String docLanguage = language.attr("lang");
         System.out.println(docLanguage);
 
-        return docLanguage.equals(this.language);
+        return textLang.equalsIgnoreCase(this.language) && textLang.equalsIgnoreCase(docLanguage);
+    }
+
+    private String detect(String text) {
+        try {
+            Detector detector = DetectorFactory.create();
+            detector.append(text);
+
+            return detector.detect();
+
+        } catch (LangDetectException e) {
+            System.out.println(e.getMessage());
+        }
+
+        return "Failed";
     }
 
     public static void main(String[] args) throws IOException{
         //Pick a URL from the frontier
         new WebCrawler().getPageLinks(seedUrl);
 
-        System.out.println(bodies.get(6));
 
-//
-//    	String html = Jsoup.connect(seedUrl).get().html();
-//    	System.out.println(html);
-//
-//        Document document = Jsoup.parse(html);
-//
-//        String text = document.body().text();
-//        System.out.printf("Body: %s", text);
+        List <String> list = Stream.of(bodies).map(w -> w.split("\\s+")).flatMap(Arrays::stream)
+                .collect(Collectors.toList());
+
+        Map <String, Integer > wordCounter = list.stream()
+                .collect(Collectors.toMap(w -> w.toLowerCase(), w -> 1, Integer::sum));
+
+
+
+        wordCounter = wordCounter.entrySet()
+                .stream()
+                .sorted((Map.Entry.<String, Integer>comparingByValue().reversed()))
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (e1, e2) -> e1, LinkedHashMap::new));
+
+        int rank = 1;
+        int total = 0;
+        for (Map.Entry<String,Integer> entry : wordCounter.entrySet())  {
+            if (isAWord(entry.getKey())) {
+                total += entry.getValue();
+            }
+        }
+
+        for (Map.Entry<String,Integer> entry : wordCounter.entrySet())  {
+
+
+            if (isAWord(entry.getKey())) {
+
+                double pr = (double)entry.getValue() / total;
+                System.out.println("Word = " + entry.getKey() +
+                        ", Frequency = " + entry.getValue() +
+                        ", Rank = " + rank +
+                        ", Pr = " +  pr +
+                        ", rPr = " + (double)rank*pr);
+                rank++;
+            }
+
+
+        }
+
+
 
     }
 
+    public static boolean isAWord(String w) {
+        for (int i = 0; i < w.length(); i++){
+            int ascii = (int)(w.charAt(i));
+
+            if (65 > ascii || ascii > 122 || ascii == 91 || ascii == 93) {
+                return false;
+            }
+            //Process char
+        }
+
+        return true;
+    }
+
+
+
 }
+
